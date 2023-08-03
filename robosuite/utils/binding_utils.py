@@ -88,7 +88,7 @@ class MjRenderContext:
         self.data = sim.data
 
         # create default scene
-        self.scn = mujoco.MjvScene(sim.model._model, maxgeom=1000)
+        self.scn = mujoco.MjvScene(sim.model._model, maxgeom=10000)
 
         # camera
         self.cam = mujoco.MjvCamera()

@@ -398,6 +398,18 @@ class NutAssembly(SingleArmEnv):
         # Arena always gets set to zero origin
         mujoco_arena.set_origin([0, 0, 0])
 
+        # Modify default agentview camera
+        mujoco_arena.set_camera(
+            camera_name="frontview",
+            pos=[0.5, 0.1, 1.0],
+            quat=[0.56, 0.43, 0.43, 0.56],
+        )    
+        mujoco_arena.set_camera(
+            camera_name="agentview",
+            pos=[0.5, 0.1, 1.35],
+            quat=[0.653, 0.271, 0.271, 0.653],
+        )            
+
         # define nuts
         self.nuts = []
         nut_names = ("SquareNut", "RoundNut")

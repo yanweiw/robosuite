@@ -52,48 +52,53 @@ def make_env():
 if __name__ == "__main__":
     # make environment
     env = make_env()
+    num_steps = 1000
 
     # wrap environment with visualization wrapper with some visualization sites
     ic = [
         {
             "type": "sphere",
             "size": [0.01],
-            "rgba": [1, 1, 0, 1],
+            "rgba": [1, 1, 0, 0.2],
             "name": "site{}".format(i),
         }
-        for i in range(8)
+        for i in range(num_steps)
     ]
-    half_extent = 0.025
-    bb_rel = np.array(
-        [
-            [half_extent, half_extent, half_extent],
-            [half_extent, half_extent, -half_extent],
-            [half_extent, -half_extent, half_extent],
-            [half_extent, -half_extent, -half_extent],
-            [-half_extent, half_extent, half_extent],
-            [-half_extent, half_extent, -half_extent],
-            [-half_extent, -half_extent, half_extent],
-            [-half_extent, -half_extent, -half_extent],
-        ]
-    )
-    env = VisualizationWrapper(env, indicator_configs=ic)
+    # half_extent = 0.025
+    # bb_rel = np.array(
+    #     [
+    #         [half_extent, half_extent, half_extent],
+    #         [half_extent, half_extent, -half_extent],
+    #         [half_extent, -half_extent, half_extent],
+    #         [half_extent, -half_extent, -half_extent],
+    #         [-half_extent, half_extent, half_extent],
+    #         [-half_extent, half_extent, -half_extent],
+    #         [-half_extent, -half_extent, half_extent],
+    #         [-half_extent, -half_extent, -half_extent],
+    #     ]
+    # )
 
+    env = VisualizationWrapper(env, indicator_configs=ic)
+    from IPython import embed
+    embed()
     # reset
     env.reset()
+    env.set_visualization_setting('grippers', True)
 
-    # set visualization site locations
-    for i in range(8):
-        env.set_indicator_pos("site{}".format(i), env._get_observations(force_update=True)["cubeA_pos"] + bb_rel[i])
-        env.sim.forward()
-    print(env.get_indicator_names())
+    # # set visualization site locations
+    # for i in range(8):
+    #     env.set_indicator_pos("site{}".format(i), env._get_observations(force_update=True)["cubeA_pos"] + bb_rel[i])
+    #     env.sim.forward()
+    # print(env.get_indicator_names())
 
-    num_steps = 1000
     if VIDEO_PATH is not None:
         video_writer = imageio.get_writer(VIDEO_PATH, fps=20)
         num_steps = 100
 
     low, high = env.action_spec
-    for _ in range(num_steps):
+    for i in range(num_steps):
+        env.set_indicator_pos("site{}".format(i), env._get_observations(force_update=True)["robot0_eef_pos"])
+        env.sim.forward()
         if VIDEO_PATH is None:
             env.render()
         else:
@@ -105,5 +110,4 @@ if __name__ == "__main__":
     if VIDEO_PATH is not None:
         video_writer.close()
 
-    from IPython import embed
     embed()
