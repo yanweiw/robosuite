@@ -252,8 +252,8 @@ class ToolHang(SingleArmEnv):
         # Modify default agentview camera
         mujoco_arena.set_camera(
             camera_name="agentview",
-            pos=[0.4837275266036987, 0.2505579098815722, 1.2639379055124524],
-            quat=[0.39713290333747864, 0.27807527780532837, 0.5016612410545349, 0.7164464592933655],
+            pos=[1.0, -0.0, 0.41],
+            quat=[0.653, 0.271, 0.271, 0.653],
         )
 
         # Add sideview

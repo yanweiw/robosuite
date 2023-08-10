@@ -409,6 +409,11 @@ class NutAssembly(SingleArmEnv):
             pos=[0.5, 0.1, 1.35],
             quat=[0.653, 0.271, 0.271, 0.653],
         )            
+        mujoco_arena.set_camera(
+            camera_name="sideview",
+            pos=[0.1, 1.0, 1.2],
+            quat=[0.010, 0.007, 0.591, 0.806],
+        )                   
 
         # define nuts
         self.nuts = []
