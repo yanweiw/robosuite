@@ -611,6 +611,13 @@ class PickPlace(SingleArmEnv):
                     enabled=enabled,
                     active=active,
                 )
+                
+        # NOTE: change to custom modality
+        observables = OrderedDict(dict(
+            Can_to_robot0_eef_pos=observables["Can_to_robot0_eef_pos"],
+            robot0_gripper_qpos=observables["robot0_gripper_qpos"],
+            Can_pos=observables["Can_pos"],
+        ))
 
         return observables
 
@@ -707,8 +714,12 @@ class PickPlace(SingleArmEnv):
             for i, sensor_names in self.object_id_to_sensors.items():
                 for name in sensor_names:
                     # Set all of these sensors to be enabled and active if this is the active object, else False
-                    self._observables[name].set_enabled(i == self.object_id)
-                    self._observables[name].set_active(i == self.object_id)
+                    if name in self._observables.keys():
+                        self._observables[name].set_enabled(i == self.object_id)
+                        self._observables[name].set_active(i == self.object_id)
+                    else:
+                        if name not in ["Can_quat", "Can_to_robot0_eef_quat"]: # HACK
+                            assert i != self.object_id, f"Missing observable with supposedly active/enabled object {name}"
 
     def _check_success(self):
         """
