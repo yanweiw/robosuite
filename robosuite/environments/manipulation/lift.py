@@ -278,6 +278,13 @@ class Lift(SingleArmEnv):
         # Arena always gets set to zero origin
         mujoco_arena.set_origin([0, 0, 0])
 
+        # Modify default agentview camera
+        mujoco_arena.set_camera(
+            camera_name="frontview",
+            pos=[0.8, 0.0, 1.3],
+            quat=[0.56, 0.43, 0.43, 0.56],
+        )    
+
         # initialize objects of interest
         tex_attrib = {
             "type": "cube",
@@ -425,4 +432,4 @@ class Lift(SingleArmEnv):
         table_height = self.model.mujoco_arena.table_offset[2]
 
         # cube is higher than the table top above a margin
-        return cube_height > table_height + 0.16
+        return cube_height > table_height + 0.40
