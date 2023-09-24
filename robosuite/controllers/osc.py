@@ -5,6 +5,7 @@ import numpy as np
 import robosuite.utils.transform_utils as T
 from robosuite.controllers.base_controller import Controller
 from robosuite.utils.control_utils import *
+from scipy.spatial.transform import Rotation as R
 
 # Supported impedance modes
 IMPEDANCE_MODES = {"fixed", "variable", "variable_kp"}
@@ -138,13 +139,13 @@ class OperationalSpaceController(Controller):
             actuator_range,
         )
         # Determine whether this is pos ori or just pos
-        self.use_ori = False # control_ori
+        self.use_ori = control_ori
 
         # Determine whether we want to use delta or absolute values as inputs
         self.use_delta = control_delta
 
         # Control dimension
-        self.control_dim = 7 if self.use_ori else 3 # change control dim to 7 to use ee pos + quat
+        self.control_dim = 6 if self.use_ori else 3 
         self.name_suffix = "POSE" if self.use_ori else "POSITION"
 
         # input and output max and min (allow for either explicit lists or single numbers)
@@ -247,8 +248,7 @@ class OperationalSpaceController(Controller):
             # Set default control for ori if we're only using position control
             if set_ori is None:
                 set_ori = (
-                    # T.quat2mat(T.axisangle2quat(delta[3:6]))
-                    T.quat2mat(delta[3:7])
+                    T.quat2mat(T.axisangle2quat(delta[3:6]))
                     if self.use_ori
                     else np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]])
                 )
