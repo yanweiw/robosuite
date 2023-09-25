@@ -193,6 +193,7 @@ class PickPlace(SingleArmEnv):
         camera_segmentations=None,  # {None, instance, class, element}
         renderer="mujoco",
         renderer_config=None,
+        use_custom_obs=False,
     ):
         # task settings
         self.single_object_mode = single_object_mode
@@ -220,6 +221,8 @@ class PickPlace(SingleArmEnv):
 
         # whether to use ground-truth object states
         self.use_object_obs = use_object_obs
+        
+        self.use_custom_obs = use_custom_obs
 
         super().__init__(
             robots=robots,
@@ -613,11 +616,12 @@ class PickPlace(SingleArmEnv):
                 )
                 
         # NOTE: change to custom modality
-        observables = OrderedDict(dict(
-            Can_to_robot0_eef_pos=observables["Can_to_robot0_eef_pos"],
-            robot0_gripper_qpos=observables["robot0_gripper_qpos"],
-            Can_pos=observables["Can_pos"],
-        ))
+        if self.use_custom_obs:
+            observables = OrderedDict(dict(
+                Can_to_robot0_eef_pos=observables["Can_to_robot0_eef_pos"],
+                robot0_gripper_qpos=observables["robot0_gripper_qpos"],
+                Can_pos=observables["Can_pos"],
+            ))
 
         return observables
 
