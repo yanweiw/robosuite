@@ -1,4 +1,6 @@
+from typing import Sequence
 from collections import OrderedDict
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -10,6 +12,58 @@ from robosuite.utils.mjcf_utils import CustomMaterial
 from robosuite.utils.observables import Observable, sensor
 from robosuite.utils.placement_samplers import UniformRandomSampler
 from robosuite.utils.transform_utils import convert_quat
+
+from robosuite.environments.mode_utils import (
+    Mode,
+    FreeMode,
+    SuccessMode,
+    Transition,
+    validify_possible_modes_cls,
+    get_single_mode,
+    get_default_possible_transitions,
+)
+
+
+@dataclass(order=True)
+class ReachingMode(Mode):
+    name: str = "reaching"
+    priority: int = 1
+    cube_pos: Sequence[float] = field(default_factory=list)
+    gripper_site_pos: Sequence[float] = field(default_factory=list)
+    prev_cube_pos: Sequence[float] = field(default_factory=list)
+    prev_gripper_site_pos: Sequence[float] = field(default_factory=list)
+    is_grasped: bool = False
+
+    def _set_custom(self):
+        if self.cube_pos != []: # handle default init
+            dist = self._compute_dist(self.gripper_site_pos, self.cube_pos)
+            prev_dist = self._compute_dist(self.prev_gripper_site_pos, self.prev_cube_pos)
+            self.activated = (dist <= prev_dist) and (not self.is_grasped)
+
+    def _compute_dist(self, gripper_site_pos, cube_pos):
+        return np.linalg.norm(gripper_site_pos - cube_pos)
+
+
+@dataclass(order=True)
+class GraspingMode(Mode):
+    name: str = "grasping"
+    priority: int = 2
+    is_grasped: bool = False
+
+    def _set_custom(self):
+        self.activated = self.is_grasped
+
+
+@dataclass(order=True)
+class LiftingMode(Mode):
+    name: str = "lifting"
+    priority: int = 3
+    is_grasped: bool = False
+    cube_height: float = 0.
+    prev_cube_height: float = 0.
+
+    def _set_custom(self):
+        self.activated = self.is_grasped and (self.cube_height >= self.prev_cube_height)
 
 
 class Lift(SingleArmEnv):
@@ -133,6 +187,45 @@ class Lift(SingleArmEnv):
         AssertionError: [Invalid number of robots specified]
     """
 
+    POSSIBLE_MODES_CLS = [
+        FreeMode,
+        ReachingMode,
+        GraspingMode,
+        LiftingMode,
+        SuccessMode,
+    ]
+
+    POSSIBLE_TRANSITIONS = get_default_possible_transitions(POSSIBLE_MODES_CLS)
+
+    @classmethod
+    def get_mode(
+        cls,
+        cube_pos: Sequence[float],
+        gripper_site_pos: Sequence[float],
+        prev_cube_pos: Sequence[float],
+        prev_gripper_site_pos: Sequence[float],
+        is_grasped: bool,
+        success: bool,
+    ):
+        cube_height = cube_pos[2]
+        prev_cube_height = prev_cube_pos[2]
+
+        possible_modes = []
+        for mode_cls in cls.POSSIBLE_MODES_CLS:
+            possible_modes.append(mode_cls.from_dict(
+                cube_pos=cube_pos,
+                gripper_site_pos=gripper_site_pos,
+                prev_cube_pos=prev_cube_pos,
+                prev_gripper_site_pos=prev_gripper_site_pos,
+                is_grasped=is_grasped,
+                cube_height=cube_height,
+                prev_cube_height=prev_cube_height,
+                success=success,
+            ))
+        mode = get_single_mode(possible_modes)
+        
+        return mode
+
     def __init__(
         self,
         robots,
@@ -164,6 +257,7 @@ class Lift(SingleArmEnv):
         camera_segmentations=None,  # {None, instance, class, element}
         renderer="mujoco",
         renderer_config=None,
+        margin_above_table_for_success=0.04,
     ):
         # settings for table top
         self.table_full_size = table_full_size
@@ -177,8 +271,15 @@ class Lift(SingleArmEnv):
         # whether to use ground-truth object states
         self.use_object_obs = use_object_obs
 
+        # terminal condition
+        self.margin_above_table_for_success = margin_above_table_for_success
+
         # object placement initializer
         self.placement_initializer = placement_initializer
+
+        # for mode
+        validify_possible_modes_cls(self.POSSIBLE_MODES_CLS)
+        self._reset_mode_cache()
 
         super().__init__(
             robots=robots,
@@ -257,6 +358,35 @@ class Lift(SingleArmEnv):
             reward *= self.reward_scale / 2.25
 
         return reward
+
+    def get_current_mode(self):
+        return Lift.get_mode(**self.mode_cache)
+
+    def _reset_mode_cache(self):
+        self.mode_cache = dict(
+            cube_pos=None,
+            gripper_site_pos=None,
+            prev_cube_pos=None,
+            prev_gripper_site_pos=None,
+            is_grasped=None,
+            success=None,
+        )
+
+    def _update_mode_cache(self):
+        cube_pos = self.sim.data.body_xpos[self.cube_body_id].copy()
+        gripper_site_pos = self.sim.data.site_xpos[self.robots[0].eef_site_id].copy()
+        if self.mode_cache["cube_pos"] is None:
+            self.mode_cache["cube_pos"] = cube_pos
+        if self.mode_cache["gripper_site_pos"] is None:
+            self.mode_cache["gripper_site_pos"] = gripper_site_pos
+        
+        self.mode_cache["prev_cube_pos"] = self.mode_cache["cube_pos"]
+        self.mode_cache["prev_gripper_site_pos"] = self.mode_cache["gripper_site_pos"]
+        self.mode_cache["cube_pos"] = cube_pos
+        self.mode_cache["gripper_site_pos"] = gripper_site_pos
+
+        self.mode_cache["is_grasped"] = self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube)
+        self.mode_cache["success"] = self._check_success()
 
     def _load_model(self):
         """
@@ -425,4 +555,4 @@ class Lift(SingleArmEnv):
         table_height = self.model.mujoco_arena.table_offset[2]
 
         # cube is higher than the table top above a margin
-        return cube_height > table_height + 0.16
+        return cube_height > table_height + self.margin_above_table_for_success

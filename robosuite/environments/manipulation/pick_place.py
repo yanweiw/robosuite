@@ -1,5 +1,7 @@
+from typing import Sequence, Any, Callable, Dict
 import random
 from collections import OrderedDict
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -19,6 +21,61 @@ from robosuite.models.objects import (
 from robosuite.models.tasks import ManipulationTask
 from robosuite.utils.observables import Observable, sensor
 from robosuite.utils.placement_samplers import SequentialCompositeSampler, UniformRandomSampler
+
+from robosuite.environments.mode_utils import (
+    Mode,
+    FreeMode,
+    SuccessMode,
+    Transition,
+    validify_possible_modes_cls,
+    get_single_mode,
+    get_default_possible_transitions,
+)
+
+
+@dataclass(order=True)
+class GraspingMode(Mode):
+    name: str = "grasping"
+    priority: int = 1
+    gripper: Any = None
+    active_objs: Sequence[Any] = field(default_factory=list)
+    _check_grasp: Callable = None
+
+    def _set_custom(self):
+        if self._check_grasp is not None:
+            is_grasped = self._check_grasp(
+                gripper=self.gripper,
+                object_geoms=[g for active_obj in self.active_objs for g in active_obj.contact_geoms],
+            )
+            self.activated = is_grasped
+    
+
+@dataclass(order=True)
+class HoveringMode(Mode):
+    name: str = "hovering"
+    priority: int = 2
+    active_objs: Sequence[Any] = field(default_factory=list)
+    body_xpos: np.ndarray = None
+    object_to_id: Dict[str, Any] = field(default_factory=dict)
+    obj_body_id: Dict[str, Any] = field(default_factory=dict)
+    bin_size: Sequence[float] = field(default_factory=list)
+    target_bin_placements: np.ndarray = None
+    
+    def _set_custom(self):
+        if self.active_objs:
+            target_bin_ids = [self.object_to_id[active_obj.name.lower()] for active_obj in self.active_objs]
+            # segment objects into left of the bins and above the bins
+            object_xy_locs = self.body_xpos[[self.obj_body_id[active_obj.name] for active_obj in self.active_objs]][
+                :, :2
+            ]
+            y_check = (
+                np.abs(object_xy_locs[:, 1] - self.target_bin_placements[target_bin_ids, 1]) < self.bin_size[1] / 4.0
+            )
+            x_check = (
+                np.abs(object_xy_locs[:, 0] - self.target_bin_placements[target_bin_ids, 0]) < self.bin_size[0] / 4.0
+            )
+            objects_above_bins = np.logical_and(x_check, y_check)
+            self.activated = np.any(objects_above_bins) # NOTE: as long as one above bin
 
 
 class PickPlace(SingleArmEnv):
@@ -158,6 +215,45 @@ class PickPlace(SingleArmEnv):
         AssertionError: [Invalid object type specified]
         AssertionError: [Invalid number of robots specified]
     """
+    
+    POSSIBLE_MODES_CLS = [
+        FreeMode,
+        GraspingMode,
+        HoveringMode,
+        SuccessMode,
+    ]
+
+    POSSIBLE_TRANSITIONS = get_default_possible_transitions(POSSIBLE_MODES_CLS)
+
+    @classmethod
+    def get_mode(
+        cls,
+        gripper: Any,
+        active_objs: Sequence[Any],
+        _check_grasp: Callable,
+        body_xpos: np.ndarray,
+        object_to_id: Dict[str, Any],
+        obj_body_id: Dict[str, Any],
+        bin_size: Sequence[float],
+        target_bin_placements: np.ndarray,
+        success: bool,
+    ):
+        possible_modes = []
+        for mode_cls in cls.POSSIBLE_MODES_CLS:
+            possible_modes.append(mode_cls.from_dict(
+                gripper=gripper,
+                active_objs=active_objs,
+                _check_grasp=_check_grasp,
+                body_xpos=body_xpos,
+                object_to_id=object_to_id,
+                obj_body_id=obj_body_id,
+                bin_size=bin_size,
+                target_bin_placements=target_bin_placements,
+                success=success,
+            ))
+        mode = get_single_mode(possible_modes)
+        
+        return mode
 
     def __init__(
         self,
@@ -380,6 +476,43 @@ class PickPlace(SingleArmEnv):
             r_hover = np.max(r_hover_all)
 
         return r_reach, r_grasp, r_lift, r_hover
+
+    def get_current_mode(self):
+        return PickPlace.get_mode(**self.mode_cache)
+    
+    def _reset_mode_cache(self):
+        self.mode_cache = dict(
+            # static
+            gripper=self.robots[0].gripper,
+            _check_grasp=self._check_grasp,
+            # may be changed at reset
+            object_to_id=self.object_to_id,
+            obj_body_id=self.obj_body_id,
+            bin_size=self.bin_size,
+            target_bin_placements=self.target_bin_placements,
+            # will be updated at step
+            active_objs=[],
+            body_xpos=None,
+            success=None,
+        )
+        
+    def _update_mode_cache(self):
+        # filter out objects that are already in the correct bins
+        active_objs = []
+        for i, obj in enumerate(self.objects):
+            if self.objects_in_bins[i]:
+                continue
+            active_objs.append(obj)
+        self.mode_cache["active_objs"] = active_objs
+        
+        # others
+        self.mode_cache["object_to_id"] = self.object_to_id
+        self.mode_cache["obj_body_id"] = self.obj_body_id
+        self.mode_cache["bin_size"] = self.bin_size
+        self.mode_cache["target_bin_placements"] = self.target_bin_placements
+        
+        self.mode_cache["body_xpos"] = self.sim.data.body_xpos
+        self.mode_cache["success"] = self._check_success()
 
     def not_in_bin(self, obj_pos, bin_id):
 
@@ -611,13 +744,6 @@ class PickPlace(SingleArmEnv):
                     enabled=enabled,
                     active=active,
                 )
-                
-        # NOTE: change to custom modality
-        observables = OrderedDict(dict(
-            Can_to_robot0_eef_pos=observables["Can_to_robot0_eef_pos"],
-            robot0_gripper_qpos=observables["robot0_gripper_qpos"],
-            Can_pos=observables["Can_pos"],
-        ))
 
         return observables
 
@@ -714,12 +840,8 @@ class PickPlace(SingleArmEnv):
             for i, sensor_names in self.object_id_to_sensors.items():
                 for name in sensor_names:
                     # Set all of these sensors to be enabled and active if this is the active object, else False
-                    if name in self._observables.keys():
-                        self._observables[name].set_enabled(i == self.object_id)
-                        self._observables[name].set_active(i == self.object_id)
-                    else:
-                        if name not in ["Can_quat", "Can_to_robot0_eef_quat"]: # HACK
-                            assert i != self.object_id, f"Missing observable with supposedly active/enabled object {name}"
+                    self._observables[name].set_enabled(i == self.object_id)
+                    self._observables[name].set_active(i == self.object_id)
 
     def _check_success(self):
         """
