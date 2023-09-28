@@ -189,7 +189,7 @@ class Lift(SingleArmEnv):
 
     POSSIBLE_MODES_CLS = [
         FreeMode,
-        ReachingMode,
+        # ReachingMode,
         GraspingMode,
         LiftingMode,
         SuccessMode,
@@ -257,7 +257,7 @@ class Lift(SingleArmEnv):
         camera_segmentations=None,  # {None, instance, class, element}
         renderer="mujoco",
         renderer_config=None,
-        margin_above_table_for_success=0.04,
+        margin_above_table_for_success=0.4, # 0.04,
     ):
         # settings for table top
         self.table_full_size = table_full_size
@@ -555,4 +555,4 @@ class Lift(SingleArmEnv):
         table_height = self.model.mujoco_arena.table_offset[2]
 
         # cube is higher than the table top above a margin
-        return cube_height > table_height + self.margin_above_table_for_success
+        return cube_height > (table_height + self.margin_above_table_for_success)
