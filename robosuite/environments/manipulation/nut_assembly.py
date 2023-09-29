@@ -1,5 +1,7 @@
+from typing import Sequence, Any, Callable, Dict
 import random
 from collections import OrderedDict
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -10,6 +12,64 @@ from robosuite.models.objects import RoundNutObject, SquareNutObject
 from robosuite.models.tasks import ManipulationTask
 from robosuite.utils.observables import Observable, sensor
 from robosuite.utils.placement_samplers import SequentialCompositeSampler, UniformRandomSampler
+
+from robosuite.environments.mode_utils import (
+    Mode,
+    FreeMode,
+    SuccessMode,
+    Transition,
+    validify_possible_modes_cls,
+    get_single_mode,
+    get_default_possible_transitions,
+)
+
+
+@dataclass(order=True)
+class GraspingMode(Mode):
+    name: str = "grasping"
+    priority: int = 1
+    gripper: Any = None
+    active_nuts: Sequence[Any] = field(default_factory=list)
+    _check_grasp: Callable = None
+
+    def _set_custom(self):
+        if self._check_grasp is not None:
+            is_grasped = self._check_grasp(
+                gripper=self.gripper,
+                object_geoms=[g for active_nut in self.active_nuts for g in active_nut.contact_geoms],
+            )
+            self.activated = is_grasped
+
+
+@dataclass(order=True)
+class HoveringMode(Mode):
+    name: str = "hovering"
+    priority: int = 2
+    active_nuts: Sequence[Any] = field(default_factory=list)
+    body_xpos: np.ndarray = None
+    peg1_body_id: int = None
+    peg2_body_id: int = None
+    nut_to_id: Dict[str, Any] = field(default_factory=dict)
+    obj_body_id: Dict[str, Any] = field(default_factory=dict)
+    dist_thresh: float = 0.1 # TODO
+    
+    def _set_custom(self):
+        if self.active_nuts:
+            r_hovers = np.zeros(len(self.active_nuts))
+            peg_body_ids = [self.peg1_body_id, self.peg2_body_id]
+            for i, nut in enumerate(self.active_nuts):
+                valid_obj = False
+                peg_pos = None
+                for nut_name, idn in self.nut_to_id.items():
+                    if nut_name in nut.name.lower():
+                        peg_pos = np.array(self.body_xpos[peg_body_ids[idn]])[:2]
+                        valid_obj = True
+                        break
+                if not valid_obj:
+                    raise Exception("Got invalid object to reach: {}".format(nut.name))
+                ob_xy = self.body_xpos[self.obj_body_id[nut.name]][:2]
+                dist = np.linalg.norm(peg_pos - ob_xy)
+                self.activated = dist <= self.dist_thresh
 
 
 class NutAssembly(SingleArmEnv):
@@ -149,6 +209,82 @@ class NutAssembly(SingleArmEnv):
         AssertionError: [Invalid nut type specified]
         AssertionError: [Invalid number of robots specified]
     """
+    
+    POSSIBLE_MODES_CLS = [
+        FreeMode,
+        GraspingMode,
+        HoveringMode,
+        SuccessMode,
+    ]
+
+    POSSIBLE_TRANSITIONS = get_default_possible_transitions(POSSIBLE_MODES_CLS)
+
+    @classmethod
+    def get_mode(
+        cls,
+        gripper: Any,
+        active_nuts: Sequence[Any],
+        _check_grasp: Callable,
+        body_xpos: np.ndarray,
+        peg1_body_id: int,
+        peg2_body_id: int,
+        nut_to_id: Dict[str, Any],
+        obj_body_id: Dict[str, Any],
+        success: bool,
+    ):
+        possible_modes = []
+        for mode_cls in cls.POSSIBLE_MODES_CLS:
+            possible_modes.append(mode_cls.from_dict(
+                gripper=gripper,
+                active_nuts=active_nuts,
+                _check_grasp=_check_grasp,
+                body_xpos=body_xpos,
+                peg1_body_id=peg1_body_id,
+                peg2_body_id=peg2_body_id,
+                nut_to_id=nut_to_id,
+                obj_body_id=obj_body_id,
+                success=success,
+            ))
+        mode = get_single_mode(possible_modes)
+        
+        return mode
+    
+    def get_current_mode(self):
+        return NutAssembly.get_mode(**self.mode_cache)
+    
+    def _reset_mode_cache(self):
+        self.mode_cache = dict(
+            # static
+            gripper=self.robots[0].gripper,
+            _check_grasp=self._check_grasp,
+            # may be changed at reset
+            peg1_body_id=self.peg1_body_id,
+            peg2_body_id=self.peg2_body_id,
+            nut_to_id=self.nut_to_id,
+            obj_body_id=self.obj_body_id,
+            # will be updated at step
+            active_nuts=[],
+            body_xpos=None,
+            success=None,
+        )
+        
+    def _update_mode_cache(self):
+        # filter out objects that are already on the correct pegs
+        active_nuts = []
+        for i, nut in enumerate(self.nuts):
+            if self.objects_on_pegs[i]:
+                continue
+            active_nuts.append(nut)
+        self.mode_cache["active_nuts"] = active_nuts
+    
+        # others
+        self.mode_cache["peg1_body_id"] = self.peg1_body_id
+        self.mode_cache["peg2_body_id"] = self.peg2_body_id
+        self.mode_cache["nut_to_id"] = self.nut_to_id
+        self.mode_cache["obj_body_id"] = self.obj_body_id
+        
+        self.mode_cache["body_xpos"] = self.sim.data.body_xpos
+        self.mode_cache["success"] = self._check_success()
 
     def __init__(
         self,

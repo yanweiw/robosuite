@@ -4,6 +4,38 @@
 
 [**[Homepage]**](https://robosuite.ai/) &ensp; [**[White Paper]**](https://arxiv.org/abs/2009.12293) &ensp; [**[Documentations]**](https://robosuite.ai/docs/overview.html) &ensp; [**[ARISE Initiative]**](https://github.com/ARISE-Initiative)
 
+## Mode Tracker
+### Run
+* `python demos/demo_mode_tracker.py`
+* Or if it fails, try `python -m demos.demo_mode_tracker`
+
+### Mode description
+#### Lift
+* `ReachingMode`: the distance between the gripper and the object is decreasing.
+* `GraspingMode`: the (only) target object is grasped.
+* `LiftingMode`: the object is grasped and its height is increasing.
+* `SuccessMode`: the target object is lifted above certain height from the table.
+* `FreeMode`: otherwise.
+
+#### PickPlace
+* `GraspingMode`: any object (may be more than one object in PickPlace) is grasped.
+* `HoveringMode`: at least one object is grasped and is carried above the target bins.
+* `SuccessMode`: all objects have been successfully placed in their corresponding bins..
+* `FreeMode`: otherwise.
+
+
+### Notes on adding mode feature
+* At `robosuite/environments/robot_env.py`, `__init__`
+    * At `__init__`, `validify_possible_modes_cls(self.POSSIBLE_MODES_CLS)` and `self._reset_mode_cache()`
+* `robosuite/environments/mode_utils.py`
+* `robosuite/environments/manipulation/lift.py` (basically implement the following functions/classes/variables for different environments)
+    * `<custom>Mode`
+    * `POSSIBLE_MODES_CLS`
+    * `get_mode`
+    * `get_current_mode`
+    * `_reset_mode_cache`
+    * `_update_mode_cache`
+
 -------
 ## Latest Updates
 - [11/15/2022] **v1.4**: Backend migration to DeepMind's official [MuJoCo Python binding](https://github.com/deepmind/mujoco), robot textures, and bug fixes :robot: [[release notes]](https://github.com/ARISE-Initiative/robosuite/releases/tag/v1.4.0) [[documentation]](http://robosuite.ai/docs/v1.4/)

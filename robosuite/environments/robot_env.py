@@ -116,6 +116,10 @@ class RobotEnv(MujocoEnv):
         ValueError: [Camera name must be specified to use camera obs]
     """
 
+    @classmethod
+    def get_mode(cls, *args, **kwargs):
+        raise NotImplementedError
+
     def __init__(
         self,
         robots,
@@ -209,6 +213,9 @@ class RobotEnv(MujocoEnv):
             )
             for idx, robot_config in enumerate(robot_configs)
         ]
+
+        # For mode
+        self.mode_cache = dict()
 
         # Run superclass init
         super().__init__(
@@ -555,6 +562,9 @@ class RobotEnv(MujocoEnv):
             # Lastly, replace camera names with the updated ones
             self.camera_names = temp_names
 
+        # For mode
+        self._reset_mode_cache()
+
     def _pre_action(self, action, policy_step=False):
         """
         Overrides the superclass method to control the robot(s) within this enviornment using their respective
@@ -582,6 +592,15 @@ class RobotEnv(MujocoEnv):
             robot_action = action[cutoff : cutoff + robot.action_dim]
             robot.control(robot_action, policy_step=policy_step)
             cutoff += robot.action_dim
+
+        # For mode
+        self._update_mode_cache()
+
+    def _reset_mode_cache(self):
+        self.mode_cache = dict()
+
+    def _update_mode_cache(self):
+        pass
 
     def _load_robots(self):
         """
