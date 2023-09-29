@@ -277,9 +277,9 @@ class Lift(SingleArmEnv):
         # object placement initializer
         self.placement_initializer = placement_initializer
 
-        # for mode
-        validify_possible_modes_cls(self.POSSIBLE_MODES_CLS)
-        self._reset_mode_cache()
+        # # for mode
+        # validify_possible_modes_cls(self.POSSIBLE_MODES_CLS)
+        # self._reset_mode_cache()
 
         super().__init__(
             robots=robots,
@@ -407,6 +407,13 @@ class Lift(SingleArmEnv):
 
         # Arena always gets set to zero origin
         mujoco_arena.set_origin([0, 0, 0])
+
+        # Modify default agentview camera
+        mujoco_arena.set_camera(
+            camera_name="frontview",
+            pos=[0.8, 0.0, 1.3],
+            quat=[0.56, 0.43, 0.43, 0.56],
+        )    
 
         # initialize objects of interest
         tex_attrib = {
@@ -555,4 +562,4 @@ class Lift(SingleArmEnv):
         table_height = self.model.mujoco_arena.table_offset[2]
 
         # cube is higher than the table top above a margin
-        return cube_height > (table_height + self.margin_above_table_for_success)
+        return cube_height > table_height + self.margin_above_table_for_success
