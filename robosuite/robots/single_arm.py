@@ -244,7 +244,7 @@ class SingleArm(Manipulator):
 
         # Update the controller goal if this is a new policy step
         if policy_step:
-            self.controller.set_goal(arm_action, set_pos=arm_action[:3]) # add set_pos to set the position goal / overrite delta pos
+            self.controller.set_goal(arm_action) #, set_pos=arm_action[:3]) # add set_pos to set the position goal / overrite delta pos
 
         # Now run the controller for a step
         torques = self.controller.run_controller()
