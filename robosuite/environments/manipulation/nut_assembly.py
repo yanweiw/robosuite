@@ -51,12 +51,13 @@ class HoveringMode(Mode):
     peg2_body_id: int = None
     nut_to_id: Dict[str, Any] = field(default_factory=dict)
     obj_body_id: Dict[str, Any] = field(default_factory=dict)
-    dist_thresh: float = 0.1 # TODO
+    dist_thresh: float = 0.03 # TODO
     
     def _set_custom(self):
         if self.active_nuts:
             r_hovers = np.zeros(len(self.active_nuts))
             peg_body_ids = [self.peg1_body_id, self.peg2_body_id]
+            activated = False
             for i, nut in enumerate(self.active_nuts):
                 valid_obj = False
                 peg_pos = None
@@ -69,7 +70,8 @@ class HoveringMode(Mode):
                     raise Exception("Got invalid object to reach: {}".format(nut.name))
                 ob_xy = self.body_xpos[self.obj_body_id[nut.name]][:2]
                 dist = np.linalg.norm(peg_pos - ob_xy)
-                self.activated = dist <= self.dist_thresh
+                activated = activated | (dist <= self.dist_thresh)
+            self.activated = activated
 
 
 class NutAssembly(SingleArmEnv):

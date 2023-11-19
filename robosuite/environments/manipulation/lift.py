@@ -190,7 +190,7 @@ class Lift(SingleArmEnv):
     POSSIBLE_MODES_CLS = [
         FreeMode,
         # ReachingMode,
-        GraspingMode,
+        # GraspingMode,
         LiftingMode,
         SuccessMode,
     ]
